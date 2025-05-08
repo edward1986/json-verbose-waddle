@@ -1,0 +1,61 @@
+name: Read JSON Object by ID and Save as <table>-<id>.json
+
+on:
+  workflow_dispatch:
+    inputs:
+      file:
+        description: "Path to the JSON file (e.g., data/users.json)"
+        required: true
+      id:
+        description: "ID of the object to read"
+        required: true
+
+jobs:
+  read-json:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Read object and save to output/<table>-<id>.json
+      env:
+        GH_TOKEN: ${{ secrets.GH_PAT }}
+      run: |
+        FILE_PATH="${{ github.event.inputs.file }}"
+        TARGET_ID=${{ github.event.inputs.id }}
+        OUTPUT_FOLDER="output"
+
+        # Get table name from file path (e.g. data/users.json → users)
+        BASE_NAME=$(basename "$FILE_PATH" .json)
+        OUTPUT_NAME="${BASE_NAME}-${TARGET_ID}.json"
+
+        mkdir -p $OUTPUT_FOLDER
+
+        # Fetch the JSON file from GitHub
+        RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" \
+          https://api.github.com/repos/${{ github.repository }}/contents/$FILE_PATH)
+
+        if echo "$RESPONSE" | jq -e .message | grep -q "Not Found"; then
+          echo "❌ File not found: $FILE_PATH"
+          exit 1
+        fi
+
+        echo "$RESPONSE" | jq -r .content | base64 -d > data.json
+
+        MATCH=$(jq --argjson id "$TARGET_ID" 'map(select(.id == $id))[0]' data.json)
+
+        if [ "$MATCH" = "null" ]; then
+          echo "⚠️ Object with ID $TARGET_ID not found."
+          exit 1
+        fi
+
+        echo "$MATCH" > "${OUTPUT_FOLDER}/${OUTPUT_NAME}"
+        echo "✅ Saved to ${OUTPUT_FOLDER}/${OUTPUT_NAME}"
+
+    - name: Upload JSON artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ github.event.inputs.file }}-id-${{ github.event.inputs.id }}
+        path: output/${{ github.event.inputs.file }}-id-${{ github.event.inputs.id }}
+        if-no-files-found: error
