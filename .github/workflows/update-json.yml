@@ -1,53 +1,69 @@
-name: Update JSON Object Field
+name: Update JSON Object by ID
 
 on:
   workflow_dispatch:
     inputs:
+      file:
+        description: "Path to the JSON file (e.g., data/users.json)"
+        required: true
       id:
         description: "ID of the object to update"
         required: true
-      field:
-        description: "Field name to update"
-        required: true
-      value:
-        description: "New value"
+      object:
+        description: "JSON object with fields to update (as string)"
         required: true
 
 jobs:
-  update-json-dynamic:
+  update-json:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Update JSON field by ID
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Ensure data folder exists
+      run: mkdir -p data
+
+    - name: Fetch, Update, and Save
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
-        FILE_PATH="data/mydata.json"
+        FILE_PATH="${{ github.event.inputs.file }}"
         TARGET_ID=${{ github.event.inputs.id }}
-        FIELD_NAME=${{ github.event.inputs.field }}
-        NEW_VALUE=${{ github.event.inputs.value }}
+        RAW_UPDATE='${{ github.event.inputs.object }}'
 
-        # Step 1: Get current file content
+        # Fetch file from GitHub
         RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" \
           https://api.github.com/repos/${{ github.repository }}/contents/$FILE_PATH)
 
+        if echo "$RESPONSE" | jq -e .message | grep -q "Not Found"; then
+          echo "❌ File not found: $FILE_PATH"
+          exit 1
+        fi
+
+        # Decode content and save SHA
+        echo "$RESPONSE" | jq -r .content | base64 -d > current.json
         SHA=$(echo "$RESPONSE" | jq -r .sha)
-        CONTENT=$(echo "$RESPONSE" | jq -r .content | base64 -d)
 
-        # Step 2: Use jq to dynamically update the field
-        UPDATED_JSON=$(echo "$CONTENT" | jq \
-          --arg field "$FIELD_NAME" \
-          --arg value "$NEW_VALUE" \
-          --argjson id "$TARGET_ID" '
-          map(if .id == $id then .[$field] = $value else . end)')
+        # Update object by ID
+        echo "$RAW_UPDATE" > update.json
 
-        # Step 3: Base64 encode the result
-        ENCODED=$(echo "$UPDATED_JSON" | base64 -w 0)
+        jq --argjson id "$TARGET_ID" \
+           --slurpfile update update.json \
+           'map(if .id == $id then . * $update[0] else . end)' current.json > updated.json
 
-        # Step 4: Commit updated file
+        # Check if anything changed
+        if cmp -s current.json updated.json; then
+          echo "✅ No changes needed. Object already up to date."
+          exit 0
+        fi
+
+        # Encode and commit
+        UPDATED_BASE64=$(base64 -w 0 updated.json)
+
         echo "{
-          \"message\": \"Update field $FIELD_NAME for object with ID $TARGET_ID\",
-          \"content\": \"$ENCODED\",
+          \"message\": \"Update object with ID $TARGET_ID in $FILE_PATH\",
+          \"content\": \"$UPDATED_BASE64\",
           \"sha\": \"$SHA\"
         }" > body.json
 
