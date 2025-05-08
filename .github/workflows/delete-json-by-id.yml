@@ -22,11 +22,12 @@ jobs:
       run: mkdir -p data
 
     - name: Fetch, Delete, and Commit
+    - name: Fetch, Delete, and Commit
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
         FILE_PATH="${{ github.event.inputs.file }}"
-        TARGET_ID=${{ github.event.inputs.id }}
+        TARGET_ID=$(echo "${{ github.event.inputs.id }}" | jq -r 'tonumber')
 
         # Fetch file
         RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" \
@@ -40,26 +41,25 @@ jobs:
         echo "$RESPONSE" | jq -r .content | base64 -d > current.json
         SHA=$(echo "$RESPONSE" | jq -r .sha)
 
-        # Remove object by ID
-        jq --argjson id "$TARGET_ID" 'del( map(select(.id == $id))[] )' current.json > updated.json
+        # ✅ Delete object with numeric ID
+        jq --argjson id "$TARGET_ID" 'del(map(select(.id == $id))[])' current.json > updated.json
 
-        # Check for no changes (e.g. ID not found)
+        # Check for no changes
         if cmp -s current.json updated.json; then
           echo "⚠️ No object with ID $TARGET_ID found. No changes made."
           exit 0
         fi
 
-        # Encode to base64
+        # Encode
         UPDATED_BASE64=$(base64 -w 0 updated.json)
 
-        # Prepare request body
+        # Commit
         echo "{
           \"message\": \"Delete object with ID $TARGET_ID from $FILE_PATH\",
           \"content\": \"$UPDATED_BASE64\",
           \"sha\": \"$SHA\"
         }" > body.json
 
-        # Push to GitHub
         curl -X PUT \
           -H "Authorization: token $GH_TOKEN" \
           -H "Content-Type: application/json" \
