@@ -1,4 +1,4 @@
-name: Append to JSON Array in File
+name: Append Dynamic Object to JSON Array
 
 on:
   workflow_dispatch:
@@ -6,8 +6,8 @@ on:
       id:
         description: "ID of the new object (use 'auto' to auto-increment)"
         required: true
-      name:
-        description: "Name of the new object"
+      object:
+        description: "JSON object to append (without the 'id' if using 'auto')"
         required: true
 
 jobs:
@@ -18,66 +18,62 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v3
 
-    - name: Ensure data directory and default file
-      run: |
-        mkdir -p data
-        if [ ! -f data/mydata.json ]; then
-          echo "[]" > data/mydata.json
-        fi
+    - name: Ensure data directory
+      run: mkdir -p data
 
-    - name: Fetch existing JSON file from GitHub
+    - name: Fetch and update JSON file
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
         FILE_PATH="data/mydata.json"
-        TARGET_NAME="${{ github.event.inputs.name }}"
         INPUT_ID="${{ github.event.inputs.id }}"
-        
-        # Fetch the file content (or initialize if not found)
+        RAW_OBJECT='${{ github.event.inputs.object }}'
+
+        # Fetch the file
         RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" \
           https://api.github.com/repos/${{ github.repository }}/contents/$FILE_PATH)
-        
-        # Handle file not found
+
         if echo "$RESPONSE" | jq -e .message | grep -q "Not Found"; then
-          echo "File not found. Initializing empty JSON array."
           echo "[]" > current.json
           SHA=""
         else
           echo "$RESPONSE" | jq -r .content | base64 -d > current.json
           SHA=$(echo "$RESPONSE" | jq -r .sha)
         fi
-        
-        # Auto-increment or use specified ID
+
+        # Compute NEXT_ID
         if [ "$INPUT_ID" = "auto" ]; then
           NEXT_ID=$(jq 'map(.id) | max + 1' current.json 2>/dev/null || echo 1)
         else
           NEXT_ID="$INPUT_ID"
         fi
-        
+
         echo "Using ID: $NEXT_ID"
-        
-        # ✅ Correct duplicate ID check
+
+        # Check for duplicates
         DUPLICATE=$(jq --argjson id "$NEXT_ID" 'any(.[]; .id == $id)' current.json)
         if [ "$DUPLICATE" = "true" ]; then
           echo "❌ ID $NEXT_ID already exists. Skipping append."
           exit 1
         fi
-        
-        # Create and append new object
-        echo "{\"id\": $NEXT_ID, \"name\": \"$TARGET_NAME\"}" > new_object.json
+
+        # Compose new object
+        echo "$RAW_OBJECT" | jq --argjson id "$NEXT_ID" '. + {id: $id}' > new_object.json
+
+        # Append to JSON array
         jq --slurpfile newObj new_object.json '. + $newObj' current.json > updated.json
-        
-        # Encode updated JSON
+
+        # Encode
         UPDATED_BASE64=$(base64 -w 0 updated.json)
-        
-        # Prepare request body
+
+        # Prepare body
         echo "{
-          \"message\": \"Create or append object to JSON array\",
+          \"message\": \"Append dynamic object\",
           \"content\": \"$UPDATED_BASE64\",
           \"sha\": \"$SHA\"
         }" > body.json
-        
-        # Commit back to GitHub
+
+        # Upload to GitHub
         curl -X PUT \
           -H "Authorization: token $GH_TOKEN" \
           -H "Content-Type: application/json" \
