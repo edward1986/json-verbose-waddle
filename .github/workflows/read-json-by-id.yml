@@ -30,7 +30,7 @@ jobs:
         OUTPUT_FOLDER="output"
 
         BASE_NAME=$(basename "$FILE_PATH" .json)
-        OUTPUT_NAME="${BASE_NAME}-${TARGET_ID}.json"
+        OUTPUT_NAME="${BASE_NAME}/${TARGET_ID}.json"
 
         mkdir -p $OUTPUT_FOLDER
 
