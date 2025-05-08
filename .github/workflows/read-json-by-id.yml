@@ -26,7 +26,7 @@ jobs:
         GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
         FILE_PATH="${{ github.event.inputs.file }}"
-        TARGET_ID=${{ github.event.inputs.id }}"
+        TARGET_ID=${{ github.event.inputs.id }}
         OUTPUT_FOLDER="output"
     
         BASE_NAME=$(basename "$FILE_PATH" .json)
