@@ -20,8 +20,6 @@ jobs:
 
     - name: Ensure data folder exists
       run: mkdir -p data
-
-    - name: Fetch, Delete, and Commit
     - name: Fetch, Delete, and Commit
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
