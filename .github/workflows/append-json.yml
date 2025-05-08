@@ -1,7 +1,14 @@
-name: Append to JSON File
+name: Append to JSON Array in File
 
 on:
   workflow_dispatch:
+    inputs:
+      id:
+        description: "ID of the new object"
+        required: true
+      name:
+        description: "Name of the new object"
+        required: true
 
 jobs:
   append-json:
@@ -11,34 +18,38 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v3
 
-    - name: Append object to JSON array in GitHub file
+    - name: Append dynamic object to JSON array in GitHub file
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         FILE_PATH="data/mydata.json"
-        NEW_OBJECT='{"id": 2, "name": "Bob"}'
+        TARGET_ID=${{ github.event.inputs.id }}
+        TARGET_NAME="${{ github.event.inputs.name }}"
 
-        # Get file content and SHA
+        # Create the object and save it to a file
+        echo "{\"id\": $TARGET_ID, \"name\": \"$TARGET_NAME\"}" > new_object.json
+
+        # Fetch file and SHA
         RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" \
           https://api.github.com/repos/${{ github.repository }}/contents/$FILE_PATH)
 
         SHA=$(echo "$RESPONSE" | jq -r .sha)
-        ENCODED_CONTENT=$(echo "$RESPONSE" | jq -r .content | base64 -d)
+        CONTENT=$(echo "$RESPONSE" | jq -r .content | base64 -d)
 
-        # ✅ Correct way to append using jq and --argjson
-        UPDATED_JSON=$(echo "$ENCODED_CONTENT" | jq --argjson newObj "$NEW_OBJECT" '. + [$newObj]')
+        # Append new object using jq
+        UPDATED_JSON=$(echo "$CONTENT" | jq --slurpfile newObj new_object.json '. + $newObj')
 
         # Encode to base64
         UPDATED_BASE64=$(echo "$UPDATED_JSON" | base64 -w 0)
 
-        # Prepare request body
+        # Prepare PUT request
         echo "{
-          \"message\": \"Append object to JSON array\",
+          \"message\": \"Append new object to JSON array\",
           \"content\": \"$UPDATED_BASE64\",
           \"sha\": \"$SHA\"
         }" > body.json
 
-        # Commit the updated file
+        # Commit updated JSON to GitHub
         curl -X PUT \
           -H "Authorization: token $GH_TOKEN" \
           -H "Content-Type: application/json" \
