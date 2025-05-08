@@ -10,7 +10,7 @@ on:
         description: "ID of the object to update"
         required: true
       object:
-        description: "JSON object with fields to update (as string)"
+        description: "JSON fields to update (as a valid JSON string)"
         required: true
 
 jobs:
@@ -24,13 +24,15 @@ jobs:
     - name: Ensure data folder exists
       run: mkdir -p data
 
-    - name: Fetch, Update, and Save
+    - name: Fetch, Update, and Commit
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
         FILE_PATH="${{ github.event.inputs.file }}"
         TARGET_ID=${{ github.event.inputs.id }}
         RAW_UPDATE='${{ github.event.inputs.object }}'
+
+        echo "$RAW_UPDATE" > update.json
 
         # Fetch file from GitHub
         RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" \
@@ -41,32 +43,32 @@ jobs:
           exit 1
         fi
 
-        # Decode content and save SHA
+        # Decode content
         echo "$RESPONSE" | jq -r .content | base64 -d > current.json
         SHA=$(echo "$RESPONSE" | jq -r .sha)
 
-        # Update object by ID
-        echo "$RAW_UPDATE" > update.json
-
-        jq --argjson id "$TARGET_ID" \
-           --slurpfile update update.json \
+        # Apply update by ID
+        jq --slurpfile update update.json \
+           --argjson id "$TARGET_ID" \
            'map(if .id == $id then . * $update[0] else . end)' current.json > updated.json
 
-        # Check if anything changed
+        # Check if file actually changed
         if cmp -s current.json updated.json; then
-          echo "✅ No changes needed. Object already up to date."
+          echo "✅ No update needed. File is already up-to-date."
           exit 0
         fi
 
-        # Encode and commit
+        # Encode updated JSON for GitHub API
         UPDATED_BASE64=$(base64 -w 0 updated.json)
 
+        # Prepare request body
         echo "{
           \"message\": \"Update object with ID $TARGET_ID in $FILE_PATH\",
           \"content\": \"$UPDATED_BASE64\",
           \"sha\": \"$SHA\"
         }" > body.json
 
+        # Commit updated file to GitHub
         curl -X PUT \
           -H "Authorization: token $GH_TOKEN" \
           -H "Content-Type: application/json" \
