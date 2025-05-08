@@ -52,5 +52,20 @@ jobs:
           exit 1
         fi
     
-        echo "$MATCH" > "$OUTPUT_PATH"
+        echo "$MATCH" | jq '.' > "$OUTPUT_PATH"
         echo "output_file=$OUTPUT_PATH" >> $GITHUB_OUTPUT
+
+    - name: Commit and push file to repo
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+        git add "${{ steps.extract_json.outputs.output_file }}"
+
+        if git diff --cached --quiet; then
+          echo "⚠️ No changes to commit."
+        else
+          git commit -m "Add extracted JSON for ID ${{ github.event.inputs.id }}"
+          git push
+          echo "✅ File committed and pushed to the repository."
+        fi
