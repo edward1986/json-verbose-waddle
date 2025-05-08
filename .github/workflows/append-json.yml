@@ -1,0 +1,45 @@
+name: Append to JSON File
+
+on:
+  workflow_dispatch:
+
+jobs:
+  append-json:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Append object to JSON array in GitHub file
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        FILE_PATH="data/mydata.json"
+        NEW_OBJECT='{"id": 2, "name": "Bob"}'
+
+        # Get file content and SHA
+        RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" \
+          https://api.github.com/repos/${{ github.repository }}/contents/$FILE_PATH)
+
+        SHA=$(echo "$RESPONSE" | jq -r .sha)
+        ENCODED_CONTENT=$(echo "$RESPONSE" | jq -r .content | base64 -d)
+
+        # Append the new object using jq
+        UPDATED_JSON=$(echo "$ENCODED_CONTENT" | jq ". + [$NEW_OBJECT]")
+
+        # Encode the updated content to base64
+        UPDATED_BASE64=$(echo "$UPDATED_JSON" | base64 -w 0)
+
+        # Prepare request body
+        echo "{
+          \"message\": \"Append object to JSON array\",
+          \"content\": \"$UPDATED_BASE64\",
+          \"sha\": \"$SHA\"
+        }" > body.json
+
+        # Commit the updated file
+        curl -X PUT \
+          -H "Authorization: token $GH_TOKEN" \
+          -H "Content-Type: application/json" \
+          --data @body.json \
+          https://api.github.com/repos/${{ github.repository }}/contents/$FILE_PATH
