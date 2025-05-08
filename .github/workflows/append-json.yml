@@ -4,13 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       file:
-        description: "Path to the target JSON file (e.g., data/users.json)"
+        description: "Path to the JSON file (e.g., data/users.json)"
         required: true
       id:
-        description: "ID of the new object (use 'auto' to auto-increment)"
+        description: "ID for the new object (use 'auto' to auto-increment)"
         required: true
       object:
-        description: "JSON object to append (without the 'id' if using 'auto')"
+        description: "JSON object to append (as string)"
         required: true
 
 jobs:
@@ -21,10 +21,10 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v3
 
-    - name: Ensure data directory
+    - name: Ensure data folder exists
       run: mkdir -p data
 
-    - name: Fetch and update JSON file
+    - name: Fetch, Merge, and Update
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
@@ -32,12 +32,11 @@ jobs:
         INPUT_ID="${{ github.event.inputs.id }}"
         RAW_OBJECT='${{ github.event.inputs.object }}'
 
-        # Fetch the file content or fallback to empty array
+        # Fetch file from repo or create blank
         RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" \
           https://api.github.com/repos/${{ github.repository }}/contents/$FILE_PATH)
 
         if echo "$RESPONSE" | jq -e .message | grep -q "Not Found"; then
-          echo "File not found. Creating new file."
           echo "[]" > current.json
           SHA=""
         else
@@ -45,7 +44,7 @@ jobs:
           SHA=$(echo "$RESPONSE" | jq -r .sha)
         fi
 
-        # Compute NEXT_ID
+        # Generate or accept ID
         if [ "$INPUT_ID" = "auto" ]; then
           NEXT_ID=$(jq 'map(.id) | max + 1' current.json 2>/dev/null || echo 1)
         else
@@ -54,30 +53,29 @@ jobs:
 
         echo "Using ID: $NEXT_ID"
 
-        # Check for duplicate ID
+        # Check for existing ID
         DUPLICATE=$(jq --argjson id "$NEXT_ID" 'any(.[]; .id == $id)' current.json)
         if [ "$DUPLICATE" = "true" ]; then
-          echo "❌ ID $NEXT_ID already exists. Skipping append."
+          echo "❌ ID $NEXT_ID already exists. Skipping."
           exit 1
         fi
 
-        # Merge new object with ID
+        # Build full object with merged structure
         echo "$RAW_OBJECT" | jq --argjson id "$NEXT_ID" '. + {id: $id}' > new_object.json
 
-        # Append to existing array
+        # Append to array, even with nested fields or arrays inside object
         jq --slurpfile newObj new_object.json '. + $newObj' current.json > updated.json
 
-        # Encode
+        # Encode final result
         UPDATED_BASE64=$(base64 -w 0 updated.json)
 
-        # Prepare body
+        # Commit to GitHub
         echo "{
-          \"message\": \"Append object to $FILE_PATH\",
+          \"message\": \"Append dynamic object to $FILE_PATH\",
           \"content\": \"$UPDATED_BASE64\",
-          \"sha\": \"$SHA\" 
+          \"sha\": \"$SHA\"
         }" > body.json
 
-        # Upload to GitHub
         curl -X PUT \
           -H "Authorization: token $GH_TOKEN" \
           -H "Content-Type: application/json" \
