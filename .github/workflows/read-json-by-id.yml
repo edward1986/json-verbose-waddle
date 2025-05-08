@@ -1,4 +1,4 @@
-name: Read JSON Object by ID and Save as <table>-<id>.json
+name: Read JSON Object by ID and Save to Repo
 
 on:
   workflow_dispatch:
@@ -11,12 +11,14 @@ on:
         required: true
 
 jobs:
-  read-json:
+  read-and-commit:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout
+    - name: Checkout repo
       uses: actions/checkout@v3
+      with:
+        token: ${{ secrets.GH_PAT }}
 
     - name: Read object and save to output/<table>-<id>.json
       id: extract_json
@@ -27,13 +29,11 @@ jobs:
         TARGET_ID=${{ github.event.inputs.id }}
         OUTPUT_FOLDER="output"
 
-        # Get table name from file path (e.g. data/users.json → users)
         BASE_NAME=$(basename "$FILE_PATH" .json)
         OUTPUT_NAME="${BASE_NAME}-${TARGET_ID}.json"
 
         mkdir -p $OUTPUT_FOLDER
 
-        # Fetch the JSON file from GitHub
         RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" \
           https://api.github.com/repos/${{ github.repository }}/contents/$FILE_PATH)
 
@@ -52,12 +52,13 @@ jobs:
         fi
 
         echo "$MATCH" > "${OUTPUT_FOLDER}/${OUTPUT_NAME}"
-        echo "output_file=${OUTPUT_NAME}" >> $GITHUB_OUTPUT
-        echo "✅ Saved to ${OUTPUT_FOLDER}/${OUTPUT_NAME}"
+        echo "output_file=${OUTPUT_FOLDER}/${OUTPUT_NAME}" >> $GITHUB_OUTPUT
 
-    - name: Upload JSON artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: object-${{ github.event.inputs.id }}
-        path: output/${{ steps.extract_json.outputs.output_file }}
-        if-no-files-found: error
+    - name: Commit and push extracted JSON
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+        git add "${{ steps.extract_json.outputs.output_file }}"
+        git commit -m "Add extracted JSON for ID ${{ github.event.inputs.id }}"
+        git push
