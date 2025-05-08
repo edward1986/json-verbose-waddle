@@ -56,8 +56,9 @@ jobs:
         
         echo "Using ID: $NEXT_ID"
         
-        # Check for duplicate ID
-        if jq --argjson id "$NEXT_ID" 'any(.[]; .id == $id)' current.json; then
+        # ✅ Correct duplicate ID check
+        DUPLICATE=$(jq --argjson id "$NEXT_ID" 'any(.[]; .id == $id)' current.json)
+        if [ "$DUPLICATE" = "true" ]; then
           echo "❌ ID $NEXT_ID already exists. Skipping append."
           exit 1
         fi
