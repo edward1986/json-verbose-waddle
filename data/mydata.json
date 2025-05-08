@@ -7,5 +7,11 @@
   {
     "id": 2,
     "name": "edward1"
+  },
+  {
+    "name": "Charlie",
+    "email": "charlie@email.com",
+    "role": "admin",
+    "id": 3
   }
 ]
