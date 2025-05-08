@@ -32,47 +32,51 @@ jobs:
         FILE_PATH="data/mydata.json"
         TARGET_NAME="${{ github.event.inputs.name }}"
         INPUT_ID="${{ github.event.inputs.id }}"
-
-        # Pull the file
+        
+        # Fetch the file content (or initialize if not found)
         RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" \
           https://api.github.com/repos/${{ github.repository }}/contents/$FILE_PATH)
-
+        
+        # Handle file not found
         if echo "$RESPONSE" | jq -e .message | grep -q "Not Found"; then
+          echo "File not found. Initializing empty JSON array."
           echo "[]" > current.json
           SHA=""
         else
-          SHA=$(echo "$RESPONSE" | jq -r .sha)
           echo "$RESPONSE" | jq -r .content | base64 -d > current.json
+          SHA=$(echo "$RESPONSE" | jq -r .sha)
         fi
-
-        # Auto-increment ID if "auto"
+        
+        # Auto-increment or use specified ID
         if [ "$INPUT_ID" = "auto" ]; then
           NEXT_ID=$(jq 'map(.id) | max + 1' current.json 2>/dev/null || echo 1)
         else
           NEXT_ID="$INPUT_ID"
         fi
-
+        
         echo "Using ID: $NEXT_ID"
-
-        # Check if ID already exists
+        
+        # Check for duplicate ID
         if jq --argjson id "$NEXT_ID" 'any(.[]; .id == $id)' current.json; then
           echo "❌ ID $NEXT_ID already exists. Skipping append."
           exit 1
         fi
-
-        # Append new object
+        
+        # Create and append new object
         echo "{\"id\": $NEXT_ID, \"name\": \"$TARGET_NAME\"}" > new_object.json
         jq --slurpfile newObj new_object.json '. + $newObj' current.json > updated.json
-
-        # Encode and commit
+        
+        # Encode updated JSON
         UPDATED_BASE64=$(base64 -w 0 updated.json)
-
+        
+        # Prepare request body
         echo "{
-          \"message\": \"Append new object to JSON array\",
+          \"message\": \"Create or append object to JSON array\",
           \"content\": \"$UPDATED_BASE64\",
           \"sha\": \"$SHA\"
         }" > body.json
-
+        
+        # Commit back to GitHub
         curl -X PUT \
           -H "Authorization: token $GH_TOKEN" \
           -H "Content-Type: application/json" \
