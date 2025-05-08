@@ -19,6 +19,7 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Read object and save to output/<table>-<id>.json
+      id: extract_json
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
@@ -51,11 +52,12 @@ jobs:
         fi
 
         echo "$MATCH" > "${OUTPUT_FOLDER}/${OUTPUT_NAME}"
+        echo "output_file=${OUTPUT_NAME}" >> $GITHUB_OUTPUT
         echo "✅ Saved to ${OUTPUT_FOLDER}/${OUTPUT_NAME}"
 
     - name: Upload JSON artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ github.event.inputs.file }}-id-${{ github.event.inputs.id }}
-        path: output/${{ github.event.inputs.file }}-id-${{ github.event.inputs.id }}
+        name: object-${{ github.event.inputs.id }}
+        path: output/${{ steps.extract_json.outputs.output_file }}
         if-no-files-found: error
