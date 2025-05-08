@@ -20,45 +20,37 @@ jobs:
       with:
         token: ${{ secrets.GH_PAT }}
 
-    - name: Read object and save to output/<table>-<id>.json
+    - name: Read object and save to output/<table>/<id>.json
       id: extract_json
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
         FILE_PATH="${{ github.event.inputs.file }}"
-        TARGET_ID=${{ github.event.inputs.id }}
+        TARGET_ID=${{ github.event.inputs.id }}"
         OUTPUT_FOLDER="output"
-
+    
         BASE_NAME=$(basename "$FILE_PATH" .json)
         OUTPUT_NAME="${BASE_NAME}/${TARGET_ID}.json"
-
-        mkdir -p $OUTPUT_FOLDER
-
+        OUTPUT_PATH="${OUTPUT_FOLDER}/${OUTPUT_NAME}"
+    
+        mkdir -p "$(dirname "$OUTPUT_PATH")"
+    
         RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" \
           https://api.github.com/repos/${{ github.repository }}/contents/$FILE_PATH)
-
+    
         if echo "$RESPONSE" | jq -e .message | grep -q "Not Found"; then
           echo "❌ File not found: $FILE_PATH"
           exit 1
         fi
-
+    
         echo "$RESPONSE" | jq -r .content | base64 -d > data.json
-
+    
         MATCH=$(jq --argjson id "$TARGET_ID" 'map(select(.id == $id))[0]' data.json)
-
+    
         if [ "$MATCH" = "null" ]; then
           echo "⚠️ Object with ID $TARGET_ID not found."
           exit 1
         fi
-
-        echo "$MATCH" > "${OUTPUT_FOLDER}/${OUTPUT_NAME}"
-        echo "output_file=${OUTPUT_FOLDER}/${OUTPUT_NAME}" >> $GITHUB_OUTPUT
-
-    - name: Commit and push extracted JSON
-      run: |
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-        git add "${{ steps.extract_json.outputs.output_file }}"
-        git commit -m "Add extracted JSON for ID ${{ github.event.inputs.id }}"
-        git push
+    
+        echo "$MATCH" > "$OUTPUT_PATH"
+        echo "output_file=$OUTPUT_PATH" >> $GITHUB_OUTPUT
