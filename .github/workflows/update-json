@@ -1,0 +1,58 @@
+name: Update JSON Object Field
+
+on:
+  workflow_dispatch:
+    inputs:
+      id:
+        description: "ID of the object to update"
+        required: true
+      field:
+        description: "Field name to update"
+        required: true
+      value:
+        description: "New value"
+        required: true
+
+jobs:
+  update-json-dynamic:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Update JSON field by ID
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        FILE_PATH="data/mydata.json"
+        TARGET_ID=${{ github.event.inputs.id }}
+        FIELD_NAME=${{ github.event.inputs.field }}
+        NEW_VALUE=${{ github.event.inputs.value }}
+
+        # Step 1: Get current file content
+        RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" \
+          https://api.github.com/repos/${{ github.repository }}/contents/$FILE_PATH)
+
+        SHA=$(echo "$RESPONSE" | jq -r .sha)
+        CONTENT=$(echo "$RESPONSE" | jq -r .content | base64 -d)
+
+        # Step 2: Use jq to dynamically update the field
+        UPDATED_JSON=$(echo "$CONTENT" | jq \
+          --arg field "$FIELD_NAME" \
+          --arg value "$NEW_VALUE" \
+          --argjson id "$TARGET_ID" '
+          map(if .id == $id then .[$field] = $value else . end)')
+
+        # Step 3: Base64 encode the result
+        ENCODED=$(echo "$UPDATED_JSON" | base64 -w 0)
+
+        # Step 4: Commit updated file
+        echo "{
+          \"message\": \"Update field $FIELD_NAME for object with ID $TARGET_ID\",
+          \"content\": \"$ENCODED\",
+          \"sha\": \"$SHA\"
+        }" > body.json
+
+        curl -X PUT \
+          -H "Authorization: token $GH_TOKEN" \
+          -H "Content-Type: application/json" \
+          --data @body.json \
+          https://api.github.com/repos/${{ github.repository }}/contents/$FILE_PATH
