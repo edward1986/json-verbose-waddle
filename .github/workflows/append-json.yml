@@ -1,8 +1,11 @@
-name: Append Dynamic Object to JSON Array
+name: Append Dynamic Object to JSON File
 
 on:
   workflow_dispatch:
     inputs:
+      file:
+        description: "Path to the target JSON file (e.g., data/users.json)"
+        required: true
       id:
         description: "ID of the new object (use 'auto' to auto-increment)"
         required: true
@@ -25,15 +28,16 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
-        FILE_PATH="data/mydata.json"
+        FILE_PATH="${{ github.event.inputs.file }}"
         INPUT_ID="${{ github.event.inputs.id }}"
         RAW_OBJECT='${{ github.event.inputs.object }}'
 
-        # Fetch the file
+        # Fetch the file content or fallback to empty array
         RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" \
           https://api.github.com/repos/${{ github.repository }}/contents/$FILE_PATH)
 
         if echo "$RESPONSE" | jq -e .message | grep -q "Not Found"; then
+          echo "File not found. Creating new file."
           echo "[]" > current.json
           SHA=""
         else
@@ -50,17 +54,17 @@ jobs:
 
         echo "Using ID: $NEXT_ID"
 
-        # Check for duplicates
+        # Check for duplicate ID
         DUPLICATE=$(jq --argjson id "$NEXT_ID" 'any(.[]; .id == $id)' current.json)
         if [ "$DUPLICATE" = "true" ]; then
           echo "❌ ID $NEXT_ID already exists. Skipping append."
           exit 1
         fi
 
-        # Compose new object
+        # Merge new object with ID
         echo "$RAW_OBJECT" | jq --argjson id "$NEXT_ID" '. + {id: $id}' > new_object.json
 
-        # Append to JSON array
+        # Append to existing array
         jq --slurpfile newObj new_object.json '. + $newObj' current.json > updated.json
 
         # Encode
@@ -68,9 +72,9 @@ jobs:
 
         # Prepare body
         echo "{
-          \"message\": \"Append dynamic object\",
+          \"message\": \"Append object to $FILE_PATH\",
           \"content\": \"$UPDATED_BASE64\",
-          \"sha\": \"$SHA\"
+          \"sha\": \"$SHA\" 
         }" > body.json
 
         # Upload to GitHub
