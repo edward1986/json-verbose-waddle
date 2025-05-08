@@ -39,19 +39,16 @@ jobs:
         echo "$RESPONSE" | jq -r .content | base64 -d > current.json
         SHA=$(echo "$RESPONSE" | jq -r .sha)
 
-        # ✅ Delete object with numeric ID
-        jq --argjson id "$TARGET_ID" 'del(map(select(.id == $id))[])' current.json > updated.json
+        # ✅ Safely delete by ID using filtering
+        jq --argjson id "$TARGET_ID" 'map(select(.id != $id))' current.json > updated.json
 
-        # Check for no changes
         if cmp -s current.json updated.json; then
           echo "⚠️ No object with ID $TARGET_ID found. No changes made."
           exit 0
         fi
 
-        # Encode
         UPDATED_BASE64=$(base64 -w 0 updated.json)
 
-        # Commit
         echo "{
           \"message\": \"Delete object with ID $TARGET_ID from $FILE_PATH\",
           \"content\": \"$UPDATED_BASE64\",
