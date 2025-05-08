@@ -20,7 +20,7 @@ jobs:
     steps:
     - name: Update JSON field by ID
       env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
         FILE_PATH="data/mydata.json"
         TARGET_ID=${{ github.event.inputs.id }}
