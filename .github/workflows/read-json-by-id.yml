@@ -56,6 +56,6 @@ jobs:
     - name: Upload JSON artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ${{OUTPUT_FOLDER}}/${{OUTPUT_NAME}}
-        path: ${{OUTPUT_FOLDER}}/${{OUTPUT_NAME}}
+        name: ${{ github.event.inputs.file }}-id-${{ github.event.inputs.id }}
+        path: output/${{ github.event.inputs.file }}-id-${{ github.event.inputs.id }}
         if-no-files-found: error
