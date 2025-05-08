@@ -6,6 +6,7 @@ on:
 jobs:
   append-json:
     runs-on: ubuntu-latest
+
     steps:
     - name: Checkout
       uses: actions/checkout@v3
@@ -24,10 +25,10 @@ jobs:
         SHA=$(echo "$RESPONSE" | jq -r .sha)
         ENCODED_CONTENT=$(echo "$RESPONSE" | jq -r .content | base64 -d)
 
-        # Append the new object using jq
-        UPDATED_JSON=$(echo "$ENCODED_CONTENT" | jq ". + [$NEW_OBJECT]")
+        # ✅ Correct way to append using jq and --argjson
+        UPDATED_JSON=$(echo "$ENCODED_CONTENT" | jq --argjson newObj "$NEW_OBJECT" '. + [$newObj]')
 
-        # Encode the updated content to base64
+        # Encode to base64
         UPDATED_BASE64=$(echo "$UPDATED_JSON" | base64 -w 0)
 
         # Prepare request body
