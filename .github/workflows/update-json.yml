@@ -28,31 +28,42 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
-        # Convert ID to number
+        FILE_PATH="${{ github.event.inputs.file }}"
         TARGET_ID=$(echo "${{ github.event.inputs.id }}" | jq -r 'tonumber')
         RAW_UPDATE='${{ github.event.inputs.object }}'
+        
         echo "$RAW_UPDATE" > update.json
         
-        # Fetch file and decode
+        # 🔁 Fetch file metadata + content
         RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" \
           https://api.github.com/repos/${{ github.repository }}/contents/$FILE_PATH)
         
+        # Optional debug
+        echo "$RESPONSE" > debug.json
+        jq . debug.json || echo "⚠️ Invalid API response"
+        
+        # Fail if not found
         if echo "$RESPONSE" | jq -e .message | grep -q "Not Found"; then
           echo "❌ File not found: $FILE_PATH"
           exit 1
         fi
         
+        # Decode actual content and extract SHA
         echo "$RESPONSE" | jq -r .content | base64 -d > current.json
         SHA=$(echo "$RESPONSE" | jq -r .sha)
         
+        # Show match
         echo "🔍 Before update:"
         jq --argjson id "$TARGET_ID" 'map(select(.id == $id))' current.json
         
+        # Perform the update
         jq --slurpfile update update.json \
            --argjson id "$TARGET_ID" \
            'map(if .id == $id then . * $update[0] else . end)' current.json > updated.json
         
+        # Skip if nothing changed
         if cmp -s current.json updated.json; then
           echo "✅ No update needed. File is already up-to-date."
           exit 0
         fi
+
