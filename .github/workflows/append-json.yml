@@ -27,7 +27,7 @@ jobs:
 
     - name: Fetch existing JSON file from GitHub
       env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
         FILE_PATH="data/mydata.json"
         TARGET_NAME="${{ github.event.inputs.name }}"
