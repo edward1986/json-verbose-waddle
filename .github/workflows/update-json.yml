@@ -18,52 +18,62 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout
+    - name: Checkout code
       uses: actions/checkout@v3
 
-    - name: Ensure data folder exists
-      run: mkdir -p data
-
-    - name: Fetch, Update, and Commit
+    - name: Update object by ID
       env:
         GH_TOKEN: ${{ secrets.GH_PAT }}
       run: |
+        set -e
+
         FILE_PATH="${{ github.event.inputs.file }}"
         TARGET_ID=$(echo "${{ github.event.inputs.id }}" | jq -r 'tonumber')
-        RAW_UPDATE='${{ github.event.inputs.object }}'
-        
-        echo "$RAW_UPDATE" > update.json
-        
-        # 🔁 Fetch file metadata + content
+
+        # ✅ Parse input JSON object safely
+        echo '${{ github.event.inputs.object }}' | jq . > update.json || {
+          echo "❌ Invalid JSON input"
+          exit 1
+        }
+
+        # 🔁 Fetch file from GitHub
         RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" \
           https://api.github.com/repos/${{ github.repository }}/contents/$FILE_PATH)
-        
-        # Optional debug
-        echo "$RESPONSE" > debug.json
-        jq . debug.json || echo "⚠️ Invalid API response"
-        
-        # Fail if not found
+
         if echo "$RESPONSE" | jq -e .message | grep -q "Not Found"; then
           echo "❌ File not found: $FILE_PATH"
           exit 1
         fi
-        
-        # Decode actual content and extract SHA
+
         echo "$RESPONSE" | jq -r .content | base64 -d > current.json
         SHA=$(echo "$RESPONSE" | jq -r .sha)
-        
-        # Show match
+
         echo "🔍 Before update:"
         jq --argjson id "$TARGET_ID" 'map(select(.id == $id))' current.json
-        
-        # Perform the update
+
+        # 🛠 Apply update to the object with matching ID
         jq --slurpfile update update.json \
            --argjson id "$TARGET_ID" \
            'map(if .id == $id then . * $update[0] else . end)' current.json > updated.json
-        
-        # Skip if nothing changed
+
+        # ⏹ Exit early if nothing changed
         if cmp -s current.json updated.json; then
           echo "✅ No update needed. File is already up-to-date."
           exit 0
         fi
 
+        # 🔐 Encode updated JSON
+        UPDATED_BASE64=$(base64 -w 0 updated.json)
+
+        # 📤 Commit the updated file to GitHub
+        echo "{
+          \"message\": \"Update object with ID $TARGET_ID in $FILE_PATH\",
+          \"content\": \"$UPDATED_BASE64\",
+          \"sha\": \"$SHA\"
+        }" > body.json
+
+        curl -X PUT \
+          -H "Authorization: token $GH_TOKEN" \
+          -H "Content-Type: application/json" \
+          --data @body.json \
+          https://api.github.com/repos/${{ github.repository }}/contents/$FILE_PATH
