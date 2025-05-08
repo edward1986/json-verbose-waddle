@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       id:
-        description: "ID of the new object"
+        description: "ID of the new object (use 'auto' to auto-increment)"
         required: true
       name:
         description: "Name of the new object"
@@ -18,38 +18,61 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v3
 
-    - name: Append dynamic object to JSON array in GitHub file
+    - name: Ensure data directory and default file
+      run: |
+        mkdir -p data
+        if [ ! -f data/mydata.json ]; then
+          echo "[]" > data/mydata.json
+        fi
+
+    - name: Fetch existing JSON file from GitHub
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         FILE_PATH="data/mydata.json"
-        TARGET_ID=${{ github.event.inputs.id }}
         TARGET_NAME="${{ github.event.inputs.name }}"
+        INPUT_ID="${{ github.event.inputs.id }}"
 
-        # Create the object and save it to a file
-        echo "{\"id\": $TARGET_ID, \"name\": \"$TARGET_NAME\"}" > new_object.json
-
-        # Fetch file and SHA
+        # Pull the file
         RESPONSE=$(curl -s -H "Authorization: token $GH_TOKEN" \
           https://api.github.com/repos/${{ github.repository }}/contents/$FILE_PATH)
 
-        SHA=$(echo "$RESPONSE" | jq -r .sha)
-        CONTENT=$(echo "$RESPONSE" | jq -r .content | base64 -d)
+        if echo "$RESPONSE" | jq -e .message | grep -q "Not Found"; then
+          echo "[]" > current.json
+          SHA=""
+        else
+          SHA=$(echo "$RESPONSE" | jq -r .sha)
+          echo "$RESPONSE" | jq -r .content | base64 -d > current.json
+        fi
 
-        # Append new object using jq
-        UPDATED_JSON=$(echo "$CONTENT" | jq --slurpfile newObj new_object.json '. + $newObj')
+        # Auto-increment ID if "auto"
+        if [ "$INPUT_ID" = "auto" ]; then
+          NEXT_ID=$(jq 'map(.id) | max + 1' current.json 2>/dev/null || echo 1)
+        else
+          NEXT_ID="$INPUT_ID"
+        fi
 
-        # Encode to base64
-        UPDATED_BASE64=$(echo "$UPDATED_JSON" | base64 -w 0)
+        echo "Using ID: $NEXT_ID"
 
-        # Prepare PUT request
+        # Check if ID already exists
+        if jq --argjson id "$NEXT_ID" 'any(.[]; .id == $id)' current.json; then
+          echo "❌ ID $NEXT_ID already exists. Skipping append."
+          exit 1
+        fi
+
+        # Append new object
+        echo "{\"id\": $NEXT_ID, \"name\": \"$TARGET_NAME\"}" > new_object.json
+        jq --slurpfile newObj new_object.json '. + $newObj' current.json > updated.json
+
+        # Encode and commit
+        UPDATED_BASE64=$(base64 -w 0 updated.json)
+
         echo "{
           \"message\": \"Append new object to JSON array\",
           \"content\": \"$UPDATED_BASE64\",
           \"sha\": \"$SHA\"
         }" > body.json
 
-        # Commit updated JSON to GitHub
         curl -X PUT \
           -H "Authorization: token $GH_TOKEN" \
           -H "Content-Type: application/json" \
