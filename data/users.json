@@ -22,5 +22,11 @@
     "email": "newemail@domain.com",
     "status": "active",
     "id": 4
+  },
+  {
+    "name": "Charlie",
+    "email": "charlie@email.com",
+    "role": "admin",
+    "id": 5
   }
 ]
