@@ -40,5 +40,11 @@
     "email": "charlie@email.com",
     "role": "admin",
     "id": 7
+  },
+  {
+    "name": "Charlie",
+    "email": "charlie@email.com",
+    "role": "admin",
+    "id": 8
   }
 ]
