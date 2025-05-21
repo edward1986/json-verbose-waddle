@@ -4,5 +4,11 @@
     "email": "charlie@email.com",
     "role": "admin",
     "id": 1
+  },
+  {
+    "name": "Charlles",
+    "email": "1newemail@domain.com",
+    "status": "active",
+    "id": 2
   }
 ]
