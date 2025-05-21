@@ -58,5 +58,11 @@
     "email": "charlie@email.com",
     "role": "admin",
     "id": 10
+  },
+  {
+    "name": "Charlide",
+    "email": "charlie@email.com",
+    "role": "admin",
+    "id": 11
   }
 ]
