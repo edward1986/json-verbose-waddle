@@ -88,14 +88,25 @@ jobs:
         FIREBASE_AUTH: ${{ secrets.FIREBASE_AUTH }}
         FILE_PATH: ${{ github.event.inputs.file }}
         NEXT_ID: ${{ github.event.inputs.id }}
-        OBJ: ${{github.event.inputs.object}}
+        RAW_OBJECT: ${{ github.event.inputs.object }}
       run: |
+        TIMESTAMP=$(date -u +%FT%TZ)
+
+        jq -n \
+          --arg file "$FILE_PATH" \
+          --arg id "$NEXT_ID" \
+          --arg time "$TIMESTAMP" \
+          --argjson obj "$RAW_OBJECT" \
+          '{
+            fileUpdated: $file,
+            status: "completed",
+            timestamp: $time,
+            id: $id,
+            obj: $obj
+          }' > payload.json
+
+        cat payload.json  # Optional: for debugging
+
         curl -X PUT "$FIREBASE_DB_URL/github-actions/lastUpdate.json?auth=$FIREBASE_AUTH" \
           -H "Content-Type: application/json" \
-          -d '{
-                "fileUpdated": "'"$FILE_PATH"'",
-                "status": "completed",
-                "timestamp": "'"$(date -u +%FT%TZ)"'",
-                "id": "'"$NEXT_ID"'",
-                "obj": "'"$github.event.inputs.object"'",
-              }'
+          --data @payload.json
