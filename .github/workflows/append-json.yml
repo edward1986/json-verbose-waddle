@@ -63,7 +63,7 @@ jobs:
         # Build full object with merged structure
         echo "$RAW_OBJECT" | jq --argjson id "$NEXT_ID" '. + {id: $id}' > new_object.json
 
-        # Append to array, even with nested fields or arrays inside object
+        # Append to array
         jq --slurpfile newObj new_object.json '. + $newObj' current.json > updated.json
 
         # Encode final result
@@ -81,17 +81,19 @@ jobs:
           -H "Content-Type: application/json" \
           --data @body.json \
           https://api.github.com/repos/${{ github.repository }}/contents/$FILE_PATH
-          - name: Notify Firebase
-        env:
-          FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }} # e.g. https://your-app.firebaseio.com
-          FILE_PATH: ${{ github.event.inputs.file }}
-          NEXT_ID: ${{ github.event.inputs.id }}
-        run: |
-          curl -X PUT "$FIREBASE_DB_URL/github-actions/lastUpdate.json?auth=$FIREBASE_AUTH" \
-            -H "Content-Type: application/json" \
-            -d '{
-                  "fileUpdated": "'"$FILE_PATH"'",
-                  "status": "completed",
-                  "timestamp": "'"$(date -u +%FT%TZ)"'",
-                  "id": "'"$NEXT_ID"'"
-                }'
+
+    - name: Notify Firebase
+      env:
+        FIREBASE_DB_URL: ${{ secrets.FIREBASE_DB_URL }}
+        FIREBASE_AUTH: ${{ secrets.FIREBASE_AUTH }}
+        FILE_PATH: ${{ github.event.inputs.file }}
+        NEXT_ID: ${{ github.event.inputs.id }}
+      run: |
+        curl -X PUT "$FIREBASE_DB_URL/github-actions/lastUpdate.json?auth=$FIREBASE_AUTH" \
+          -H "Content-Type: application/json" \
+          -d '{
+                "fileUpdated": "'"$FILE_PATH"'",
+                "status": "completed",
+                "timestamp": "'"$(date -u +%FT%TZ)"'",
+                "id": "'"$NEXT_ID"'"
+              }'
